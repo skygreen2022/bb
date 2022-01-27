@@ -54,7 +54,7 @@ class Dispatcher
                 $isValidRequet = true;
             //break;
             } else {
-                $output = self::output($moduleName, $router, $current_action);
+                $output = self::output($router, $current_action);
                 if (self::$isOutputStatic) {
                     $output = render_tag($output);
                     return $output;
@@ -126,12 +126,17 @@ class Dispatcher
                 $current_action->afterAction();
             }
             if (get_class($current_action) == "Action_Ajax") {
-                die();
+                // 原设计是MVC的方式，只在这个类下面放Ajax请求
             }
             // ajax请求 返回json数据对象
-            if ($response && is_string($response) && json_decode($response)) {
-                echo $response;
-                die();
+            if ($response && is_string($response)) {
+                if (json_decode($response)) {
+                    echo $response;
+                    die();
+                } else {
+                    echo $response;
+                    die();
+                }
             }
             // ajax请求 返回数组
             if (is_array($response) || is_object($response)) {
@@ -150,25 +155,39 @@ class Dispatcher
      * 管理视图: 输出结果
      * @var View $view 视图
      */
-    public static function output($moduleName, $router, $current_action)
+    public static function output($router, $current_action)
     {
         ob_start();
         $view       = $current_action->getView();
         $controller = $router->getController();
         $action     = $router->getAction();
-        $templateFile    = $controller . DS . $action;//模板文件路径名称
-        $controller_path = $router->getControllerPath();
-        if (!empty($controller_path)) {
-            if (endWith($controller_path, DS)) {
-                $templateFile = $controller_path . $templateFile;
+        if (!empty($view->getAtPageDir())) {
+            $renderTemplateFile  = $view->getAtPageDir();
+            $renderTemplateFile  = trim($renderTemplateFile, "\\/.");
+            $renderTemplateFile  = str_replace([".", "\\", "/"], DS, $renderTemplateFile);
+            $renderTemplateFile .= DS;
+            if (!empty($view->getAtPageFile())) {
+                $renderTemplateFile .= $view->getAtPageFile();
             } else {
-                $templateFile = $controller_path . DS . $templateFile;
+                $renderTemplateFile .= $action;
             }
+        } else {
+            $templateFile    = $controller . DS . $action;//模板文件路径名称
+            $controller_path = $router->getControllerPath();
+            if (!empty($controller_path)) {
+                if (endWith($controller_path, DS)) {
+                    $templateFile = $controller_path . $templateFile;
+                } else {
+                    $templateFile = $controller_path . DS . $templateFile;
+                }
+            }
+            $renderTemplateFile = $templateFile;
         }
-        if (!file_exists(Gc::$nav_root_path . $view->templateDir() . $templateFile . $view->templateSuffixName())) {
-            throw new Exception(" view/{$controller}" . Wl::ERROR_INFO_VIEW_UNKNOWN . " '" . $action . $view->templateSuffixName() . "'");
+        // die($renderTemplateFile);
+        if (!file_exists(Gc::$nav_root_path . $view->templateDir() . $renderTemplateFile . $view->templateSuffixName())) {
+            throw new Exception($view->template_dir . Wl::ERROR_INFO_VIEW_UNKNOWN . " '" . $renderTemplateFile . $view->templateSuffixName() . "'");
         }
-        $view->output($templateFile, $view->templateMode(), $current_action);
+        $view->output($renderTemplateFile, $view->templateMode(), $current_action);
         $output = ob_get_clean();
         return $output;
     }
